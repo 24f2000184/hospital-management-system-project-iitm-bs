@@ -53,3 +53,7 @@ hospital-management/
 │       └── style.css
 └── hospital.db
 ```
+
+## License
+
+MIT License
