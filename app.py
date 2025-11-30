@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '@24f2000184'
+app.config['SECRET_KEY'] = 'your-secret-key-here-change-in-production'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hospital.db'  # SQLite database
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -63,6 +63,7 @@ class Appointment(db.Model):
     doctor_id = db.Column(db.Integer, db.ForeignKey('doctor.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
     time = db.Column(db.Time, nullable=False)
+    reason = db.Column(db.Text)
     status = db.Column(db.String(20), default='Booked')  # Booked, Completed, Cancelled
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     treatment = db.relationship('Treatment', backref='appointment', uselist=False, lazy=True)
@@ -215,11 +216,8 @@ def admin_dashboard():
     total_doctors = Doctor.query.filter_by(is_active=True).count()
     total_patients = Patient.query.filter_by(is_active=True).count()
     total_appointments = Appointment.query.count()
-    
-    # Only count upcoming appointments (today and future dates with Booked status)
-    today = datetime.now().date()
     upcoming_appointments = Appointment.query.filter(
-        Appointment.date >= today,
+        Appointment.date >= datetime.now().date(),
         Appointment.status == 'Booked'
     ).count()
     
@@ -281,15 +279,8 @@ def edit_doctor(id):
     doctor.department_id = request.form.get('department_id')
     doctor.experience = request.form.get('experience')
     
-    # Update password only if provided
-    new_password = request.form.get('password')
-    if new_password and new_password.strip():
-        doctor.password = generate_password_hash(new_password)
-        flash('Doctor information and password updated successfully', 'success')
-    else:
-        flash('Doctor information updated successfully', 'success')
-    
     db.session.commit()
+    flash('Doctor updated successfully', 'success')
     return redirect(url_for('admin_doctors'))
 
 @app.route('/admin/delete_doctor/<int:id>')
@@ -328,35 +319,7 @@ def delete_patient(id):
 @app.route('/admin/appointments')
 @login_required('admin')
 def admin_appointments():
-    filter_type = request.args.get('filter', 'all')
-    today = datetime.now().date()
-    
-    print(f"DEBUG: Today's date is: {today}")
-    print(f"DEBUG: Filter type: {filter_type}")
-    
-    if filter_type == 'upcoming':
-        appointments = Appointment.query.filter(
-            Appointment.date >= today,
-            Appointment.status == 'Booked'
-        ).order_by(Appointment.date.asc(), Appointment.time.asc()).all()
-        
-        print(f"DEBUG: Found {len(appointments)} upcoming appointments")
-        for apt in appointments:
-            print(f"  - ID: {apt.id}, Date: {apt.date}, Status: {apt.status}")
-            
-    elif filter_type == 'completed':
-        appointments = Appointment.query.filter_by(status='Completed').order_by(
-            Appointment.date.desc(), Appointment.time.desc()
-        ).all()
-    elif filter_type == 'cancelled':
-        appointments = Appointment.query.filter_by(status='Cancelled').order_by(
-            Appointment.date.desc(), Appointment.time.desc()
-        ).all()
-    else:  # all
-        appointments = Appointment.query.order_by(
-            Appointment.date.desc(), Appointment.time.desc()
-        ).all()
-    
+    appointments = Appointment.query.order_by(Appointment.date.desc(), Appointment.time.desc()).all()
     return render_template('admin_appointments.html', appointments=appointments)
 
 @app.route('/admin/upcoming_appointments')
@@ -372,7 +335,7 @@ def admin_upcoming_appointments():
     
     return render_template('admin_upcoming_appointments.html', 
                          appointments=appointments, 
-                         today=today)    
+                         today=today)  
 
 # ===================== DOCTOR ROUTES =====================
 
@@ -400,7 +363,8 @@ def doctor_dashboard():
     return render_template('doctor_dashboard.html',
                          appointments=upcoming_appointments,
                          patients=patients,
-                         total_patients=total_patients)
+                         total_patients=total_patients,
+                         today=today)
 
 @app.route('/doctor/availability', methods=['GET', 'POST'])
 @login_required('doctor')
@@ -463,10 +427,38 @@ def doctor_appointments():
 def complete_appointment(id):
     appointment = Appointment.query.get_or_404(id)
     
+    # Check if appointment belongs to this doctor
+    if appointment.doctor_id != session['user_id']:
+        flash('Unauthorized access', 'danger')
+        return redirect(url_for('doctor_appointments'))
+    
+    # Check if appointment is already completed or cancelled
+    if appointment.status != 'Booked':
+        flash(f'This appointment is already {appointment.status}', 'warning')
+        return redirect(url_for('doctor_appointments'))
+    
+    # Check if today is the appointment date
+    today = datetime.now().date()
+    if appointment.date != today:
+        if appointment.date > today:
+            flash(f'Cannot complete appointment scheduled for future date ({appointment.date.strftime("%Y-%m-%d")}). Please wait until the appointment date.', 'warning')
+        else:
+            flash(f'This appointment was scheduled for {appointment.date.strftime("%Y-%m-%d")}. You can still complete it as a past appointment.', 'info')
+            # Allow completing past appointments, but show info message
+    
     if request.method == 'POST':
+        # Double-check on submission
+        if appointment.date > today:
+            flash('Cannot complete future appointments', 'danger')
+            return redirect(url_for('doctor_appointments'))
+        
         diagnosis = request.form.get('diagnosis')
         prescription = request.form.get('prescription')
         notes = request.form.get('notes')
+        
+        if not diagnosis or not prescription:
+            flash('Diagnosis and prescription are required', 'danger')
+            return redirect(url_for('complete_appointment', id=id))
         
         appointment.status = 'Completed'
         
@@ -482,7 +474,9 @@ def complete_appointment(id):
         flash('Appointment completed successfully', 'success')
         return redirect(url_for('doctor_appointments'))
     
-    return render_template('complete_appointment.html', appointment=appointment)
+    return render_template('complete_appointment.html', 
+                         appointment=appointment,
+                         now=datetime.now())
 
 @app.route('/doctor/patient_history/<int:patient_id>')
 @login_required('doctor')
@@ -568,7 +562,6 @@ def book_appointment(doctor_id):
         date = datetime.strptime(date_str, '%Y-%m-%d').date()
         time = datetime.strptime(time_str, '%H:%M').time()
         
-        # Check if appointment already exists
         existing = Appointment.query.filter_by(
             doctor_id=doctor_id,
             date=date,
@@ -584,7 +577,8 @@ def book_appointment(doctor_id):
             patient_id=session['user_id'],
             doctor_id=doctor_id,
             date=date,
-            time=time
+            time=time,
+            reason=request.form.get('reason')
         )
         db.session.add(appointment)
         db.session.commit()
@@ -592,16 +586,16 @@ def book_appointment(doctor_id):
         flash('Appointment booked successfully', 'success')
         return redirect(url_for('patient_dashboard'))
     
-    # Get doctor's availability
     today = datetime.now().date()
     week_later = today + timedelta(days=7)
+    
     availabilities = DoctorAvailability.query.filter(
         DoctorAvailability.doctor_id == doctor_id,
         DoctorAvailability.date.between(today, week_later),
         DoctorAvailability.is_available == True
     ).all()
     
-    return render_template('book_appointment.html', doctor=doctor, availabilities=availabilities)
+    return render_template('book_appointment.html', doctor=doctor, availabilities=availabilities, today=today, week_later=week_later)
 
 @app.route('/patient/cancel_appointment/<int:id>')
 @login_required('patient')

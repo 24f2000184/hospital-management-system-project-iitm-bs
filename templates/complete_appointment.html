@@ -11,29 +11,72 @@
             </div>
             <div class="card-body">
                 <div class="alert alert-info">
-                    <strong>Patient:</strong> {{ appointment.patient.name }}<br>
+                    <strong>Patient:</strong> {{ appointment.patient.name|title }}<br>
                     <strong>Date:</strong> {{ appointment.date.strftime('%Y-%m-%d') }}<br>
-                    <strong>Time:</strong> {{ appointment.time.strftime('%H:%M') }}
                 </div>
+
+                <!-- Patient's Reason/Symptoms -->
+                {% if appointment.reason %}
+                <div class="alert alert-warning">
+                    <h5><i class="bi bi-exclamation-triangle-fill"></i> Patient's Reason for Visit</h5>
+                    <p class="mb-0" style="white-space: pre-wrap;">{{ appointment.reason }}</p>
+                </div>
+                {% else %}
+                <div class="alert alert-secondary">
+                    <p class="mb-0"><i class="bi bi-info-circle"></i> No reason provided by patient</p>
+                </div>
+                {% endif %}
+
+                <!-- Check appointment date status -->
+                {% set today = now.date() %}
+                {% if appointment.date > today %}
+                <!-- Future appointment - DISABLE -->
+                <div class="alert alert-danger">
+                    <h5><i class="bi bi-exclamation-circle"></i> Cannot Complete Future Appointment</h5>
+                    <p class="mb-0">This appointment is scheduled for <strong>{{ appointment.date.strftime('%Y-%m-%d') }}</strong>. 
+                    You can only complete appointments on or after the scheduled date.</p>
+                </div>
+                {% elif appointment.date < today %}
+                <!-- Past appointment - ALLOW but show warning -->
+                <div class="alert alert-warning">
+                    <h5><i class="bi bi-clock-history"></i> Past Appointment</h5>
+                    <p class="mb-0">This appointment was scheduled for <strong>{{ appointment.date.strftime('%Y-%m-%d') }}</strong>. 
+                    You can still complete it now.</p>
+                </div>
+                {% else %}
+                <!-- Today's appointment - NORMAL -->
+                <div class="alert alert-success">
+                    <h5><i class="bi bi-calendar-check"></i> Today's Appointment</h5>
+                    <p class="mb-0">This appointment is scheduled for today.</p>
+                </div>
+                {% endif %}
+                <hr>
                 
-                <form method="POST">
+                <!-- Treatment Form - ADD onsubmit to prevent submission for future dates -->
+                <form method="POST" {% if appointment.date > today %}onsubmit="return false;"{% endif %}>
                     <div class="mb-3">
                         <label class="form-label">Diagnosis *</label>
-                        <textarea class="form-control" name="diagnosis" rows="4" required></textarea>
+                        <textarea class="form-control" name="diagnosis" rows="4" 
+                                  {% if appointment.date > today %}disabled{% endif %} 
+                                  required></textarea>
                     </div>
                     
                     <div class="mb-3">
                         <label class="form-label">Prescription *</label>
-                        <textarea class="form-control" name="prescription" rows="4" required></textarea>
+                        <textarea class="form-control" name="prescription" rows="4" 
+                                  {% if appointment.date > today %}disabled{% endif %} 
+                                  required></textarea>
                     </div>
                     
                     <div class="mb-3">
                         <label class="form-label">Additional Notes</label>
-                        <textarea class="form-control" name="notes" rows="3"></textarea>
+                        <textarea class="form-control" name="notes" rows="3"
+                                  {% if appointment.date > today %}disabled{% endif %}></textarea>
                     </div>
                     
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-success">
+                        <button type="submit" class="btn btn-success"
+                                {% if appointment.date > today %}disabled{% endif %}>
                             <i class="bi bi-check-circle"></i> Mark as Completed
                         </button>
                         <a href="{{ url_for('doctor_appointments') }}" class="btn btn-secondary">Cancel</a>

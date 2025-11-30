@@ -131,11 +131,12 @@
     </div>
 </div>
 
+
 <!-- Add Doctor Modal -->
 <div class="modal fade" id="addDoctorModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('add_doctor') }}">
+            <form method="POST" action="{{ url_for('add_doctor') }}" autocomplete="off">
                 <div class="modal-header">
                     <h5 class="modal-title">Add New Doctor</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -143,19 +144,19 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">Name *</label>
-                        <input type="text" class="form-control" name="name" required>
+                        <input type="text" class="form-control" name="name" autocomplete="off" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Email *</label>
-                        <input type="email" class="form-control" name="email" required>
+                        <input type="text" class="form-control" name="email" autocomplete="off" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Password *</label>
-                        <input type="password" class="form-control" name="password" required>
+                        <input type="password" class="form-control" name="password" autocomplete="new-password" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Phone</label>
-                        <input type="tel" class="form-control" name="phone">
+                        <input type="tel" class="form-control" name="phone" autocomplete="off">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Department *</label>
